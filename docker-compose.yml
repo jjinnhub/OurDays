@@ -1,0 +1,33 @@
+# OurDays 개발용 컨테이너
+# 사용법 (Windows PowerShell, 프로젝트 폴더에서):
+#   docker compose up -d        # 시작 (첫 실행 시 의존성 설치 포함 수 분 소요)
+#   docker compose logs -f web  # 로그 보기 ("Ready" 뜨면 http://localhost:3000 접속)
+#   docker compose down         # 중지
+#   docker compose exec web sh  # 컨테이너 안에서 쉘 열기 (npm install 등)
+name: ourdays
+
+services:
+  ourdays:
+    image: node:22-bookworm-slim
+    container_name: ourdays-dev
+    working_dir: /app
+    command: sh scripts/docker-dev.sh
+    ports:
+      - "3000:3000"
+    volumes:
+      # 소스 코드: Windows 폴더 그대로 (편집기로 수정 가능)
+      - .:/app
+      # I/O가 무거운 폴더는 named volume(리눅스 FS)으로 분리 → 속도·심볼릭 링크 문제 해결
+      - node_modules:/app/node_modules
+      - next_cache:/app/build
+    environment:
+      # 바인드 마운트에서 파일 변경 이벤트가 안 올 수 있어 폴링으로 HMR 보장
+      WATCHPACK_POLLING: "true"
+      # 프로젝트 .npmrc의 bin-links=false를 컨테이너 안에서는 무효화 (env가 .npmrc보다 우선)
+      npm_config_bin_links: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    restart: unless-stopped
+
+volumes:
+  node_modules:
+  next_cache:
