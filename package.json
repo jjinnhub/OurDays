@@ -1,0 +1,22 @@
+{
+  "name": "ourdays",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "NEXT_DIST_DIR=build NEXT_TRACE_SPAN_THRESHOLD_MS=2147483647 node node_modules/next/dist/bin/next dev",
+    "build": "NEXT_DIST_DIR=build NEXT_TRACE_SPAN_THRESHOLD_MS=2147483647 node node_modules/next/dist/bin/next build",
+    "start": "NEXT_DIST_DIR=build NEXT_TRACE_SPAN_THRESHOLD_MS=2147483647 node node_modules/next/dist/bin/next start",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.27",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  }
+}
