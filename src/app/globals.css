@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  OurDays 디자인 토큰
+  logo.png 팔레트: 크림 배경, 코랄(주색), 노랑(햇살), 세이지 그린, 블러시 핑크, 샌드 베이지
+*/
+@layer base {
+  :root {
+    /* 브랜드 원색 */
+    --brand-coral: 4 74% 63%;   /* #E8645B */
+    --brand-sun: 40 87% 66%;    /* #F4C25B */
+    --brand-sage: 114 19% 66%;  /* #9DB89A */
+    --brand-blush: 5 72% 82%;   /* #F2B3AE */
+    --brand-sand: 32 38% 73%;   /* #D4B59E */
+    --brand-cream: 37 60% 96%;  /* #FBF6EF */
+
+    /* shadcn 시맨틱 토큰 */
+    --background: 37 60% 96%;
+    --foreground: 17 17% 24%;
+
+    --card: 36 100% 99%;
+    --card-foreground: 17 17% 24%;
+
+    --popover: 36 100% 99%;
+    --popover-foreground: 17 17% 24%;
+
+    --primary: 4 74% 63%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 114 19% 66%;
+    --secondary-foreground: 120 20% 18%;
+
+    --muted: 33 42% 91%;
+    --muted-foreground: 20 12% 50%;
+
+    --accent: 40 87% 66%;
+    --accent-foreground: 30 40% 20%;
+
+    --destructive: 2 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 37% 87%;
+    --input: 30 37% 87%;
+    --ring: 4 74% 63%;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 20 14% 11%;
+    --foreground: 36 40% 92%;
+
+    --card: 20 13% 14%;
+    --card-foreground: 36 40% 92%;
+
+    --popover: 20 13% 14%;
+    --popover-foreground: 36 40% 92%;
+
+    --primary: 4 74% 66%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 114 16% 45%;
+    --secondary-foreground: 36 40% 95%;
+
+    --muted: 20 12% 20%;
+    --muted-foreground: 30 15% 65%;
+
+    --accent: 40 70% 58%;
+    --accent-foreground: 30 40% 12%;
+
+    --destructive: 2 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 20 12% 24%;
+    --input: 20 12% 24%;
+    --ring: 4 74% 66%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
