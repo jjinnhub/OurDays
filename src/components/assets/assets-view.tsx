@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Landmark, Lock, Pencil, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { BarChart3, Landmark, Lock, Pencil, Plus } from "lucide-react";
 
 import { AssetFormModal } from "@/components/assets/asset-form-modal";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ type Props = {
 };
 
 export function AssetsView({ familyId, currentUserId, assets, members, canEdit }: Props) {
+  const router = useRouter();
   const [tab, setTab] = useState<"family" | "mine">("family");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Asset | null>(null);
@@ -71,8 +73,12 @@ export function AssetsView({ familyId, currentUserId, assets, members, canEdit }
       setEditing(asset);
       setModalOpen(true);
       setEditMode(false);
+      return;
     }
-    // TODO(가계부 이식 후): 해당 자산으로 필터된 가계부로 이동 복원
+    // 기본 동작: 해당 자산으로 필터된 가계부로 이동 (개인 자산은 개인 가계부로)
+    router.push(
+      `/ledger?asset=${asset.id}${asset.is_private ? "&tab=personal" : ""}`,
+    );
   }
 
   return (
@@ -80,6 +86,14 @@ export function AssetsView({ familyId, currentUserId, assets, members, canEdit }
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-bold">자산</h1>
         <div className="hidden items-center gap-1.5 md:flex">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/stats?tab=assets")}
+          >
+            <BarChart3 />
+            통계
+          </Button>
           {canEdit && (
             <Button
               variant={editMode ? "default" : "outline"}
@@ -123,9 +137,21 @@ export function AssetsView({ familyId, currentUserId, assets, members, canEdit }
         ))}
       </div>
 
-      {/* ---------- 모바일: 수정/추가 버튼 행 ---------- */}
-      {canEdit && (
-      <div className="grid grid-cols-2 gap-1.5 md:hidden">
+      {/* ---------- 모바일: 통계/수정/추가 버튼 행 ---------- */}
+      <div
+        className={cn(
+          "grid gap-1.5 md:hidden",
+          canEdit ? "grid-cols-3" : "grid-cols-1",
+        )}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push("/stats?tab=assets")}
+        >
+          <BarChart3 />
+          통계
+        </Button>
         {canEdit && (
           <>
             <Button
@@ -143,7 +169,6 @@ export function AssetsView({ familyId, currentUserId, assets, members, canEdit }
           </>
         )}
       </div>
-      )}
 
       {/* ---------- 순자산 요약 한 줄 ---------- */}
       <Card>
