@@ -1,7 +1,7 @@
 # OurDays 개발용 컨테이너
 # 사용법 (Windows PowerShell, 프로젝트 폴더에서):
 #   docker compose up -d        # 시작 (첫 실행 시 의존성 설치 포함 수 분 소요)
-#   docker compose logs -f web  # 로그 보기 ("Ready" 뜨면 http://localhost:3000 접속)
+#   docker compose logs -f ourdays  # 로그 보기 ("Ready" 뜨면 http://localhost:3000 접속)
 #   docker compose down         # 중지
 #   docker compose exec web sh  # 컨테이너 안에서 쉘 열기 (npm install 등)
 name: ourdays
