@@ -16,7 +16,7 @@ import {
   type FcPurposeKey,
   type FixedCost,
 } from "@/lib/fixed-cost-constants";
-import { formatAmountInput, type AssetLite } from "@/lib/ledger-constants";
+import { formatAmountInput } from "@/lib/ledger-constants";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +25,8 @@ type Props = {
   onClose: () => void;
   familyId: string;
   members: FamilyMemberLite[];
-  assets: AssetLite[];
+  /** 분배 자산 선택지 (공동·개인 교차 포함, 뷰에서 탭에 맞게 구성) */
+  assetOptions: { value: string; label: string }[];
   editing: FixedCost | null;
   currentUserId: string;
   /** 내 예산 탭에서 열면 true — 나만 보는 항목으로 기록 */
@@ -45,7 +46,7 @@ export function FixedCostFormModal({
   onClose,
   familyId,
   members,
-  assets,
+  assetOptions,
   editing,
   currentUserId,
   recordPrivate = false,
@@ -84,11 +85,6 @@ export function FixedCostFormModal({
     setConfirmDelete(false);
     setError(null);
   }, [open, editing]);
-
-  const assetOptions = assets.map((a) => ({
-    value: a.id,
-    label: a.institution ? `${a.institution} · ${a.name}` : a.name,
-  }));
 
   async function save() {
     if (!name.trim()) {
