@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { FixedCostsView } from "@/components/fixed-costs/fixed-costs-view";
 import type { FamilyMemberLite } from "@/lib/asset-constants";
 import type { FcOccurrence, FixedCost } from "@/lib/fixed-cost-constants";
-import type { AssetLite } from "@/lib/ledger-constants";
+import type { AssetLite, TransferTarget } from "@/lib/ledger-constants";
 import { getUserAndMembership } from "@/lib/family";
 import { createClient } from "@/lib/supabase/server";
 
@@ -34,6 +34,7 @@ export default async function FixedCostsPage() {
     { data: canEdit },
     { data: budgetRow },
     { data: personalBudgetRow },
+    { data: targetRows },
   ] = await Promise.all([
     supabase
       .from("fixed_costs")
@@ -74,6 +75,9 @@ export default async function FixedCostsPage() {
       .eq("family_id", membership.family_id)
       .eq("user_id", user.id)
       .maybeSingle(),
+    supabase.rpc("list_transfer_targets", {
+      p_family_id: membership.family_id,
+    }),
   ]);
 
   return (
@@ -85,6 +89,7 @@ export default async function FixedCostsPage() {
       assets={(assetRows as AssetLite[] | null) ?? []}
       canEdit={Boolean(canEdit)}
       currentUserId={user.id}
+      transferTargets={(targetRows as TransferTarget[] | null) ?? []}
       expectedIncome={Number(
         (budgetRow as { expected_income: number | string } | null)?.expected_income ?? 0,
       )}
