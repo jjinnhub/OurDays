@@ -26,7 +26,7 @@ import {
   type FcOccurrence,
   type FixedCost,
 } from "@/lib/fixed-cost-constants";
-import type { AssetLite } from "@/lib/ledger-constants";
+import type { AssetLite, TransferTarget } from "@/lib/ledger-constants";
 import { formatAmountInput } from "@/lib/ledger-constants";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,8 @@ type Props = {
   assets: AssetLite[];
   canEdit: boolean;
   currentUserId: string;
+  /** 분배 대상 전체(공동 + 전 구성원 개인 — 이름·기관·명의자만) */
+  transferTargets: TransferTarget[];
   /** 가족 월 예산 (budget_settings) */
   expectedIncome: number;
   /** 내 월 예산 (personal_budget_settings) */
@@ -55,6 +57,7 @@ export function FixedCostsView({
   assets,
   canEdit,
   currentUserId,
+  transferTargets,
   expectedIncome,
   expectedIncomePersonal,
 }: Props) {
@@ -82,11 +85,46 @@ export function FixedCostsView({
       }),
     [occurrences, fcById, tab],
   );
-  const assetById = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const memberById = useMemo(
     () => new Map(members.map((m) => [m.user_id, m])),
     [members],
   );
+  const assetById = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
+  const targetById = useMemo(
+    () => new Map(transferTargets.map((t) => [t.id, t])),
+    [transferTargets],
+  );
+
+  /** 분배 자산 표시명 — 타인 개인 자산은 🔒 명의자·이름으로 보완 */
+  const resolveAssetName = (assetId: string | null): string | null => {
+    if (!assetId) return null;
+    const asset = assetById.get(assetId);
+    if (asset) return asset.name;
+    const target = targetById.get(assetId);
+    if (!target) return null;
+    const owner = target.owner_user_id
+      ? memberById.get(target.owner_user_id)
+      : null;
+    return `🔒 ${owner ? `${owner.display_name} ` : ""}${target.name}`;
+  };
+
+  // 분배 자산 선택지 (가족 탭: 공동 + 전 구성원 개인 / 내 예산: 내 개인 + 공동)
+  const assetOptions = useMemo(() => {
+    const label = (t: TransferTarget) => {
+      const base = t.institution ? `${t.institution} · ${t.name}` : t.name;
+      if (!t.is_private) return tab === "personal" ? `🏡 ${base}` : base;
+      const owner = t.owner_user_id ? memberById.get(t.owner_user_id) : null;
+      return `🔒 ${owner ? `${owner.display_name} · ` : ""}${base}`;
+    };
+    if (tab === "personal") {
+      const mine = transferTargets.filter(
+        (t) => t.is_private && t.owner_user_id === currentUserId,
+      );
+      const shared = transferTargets.filter((t) => !t.is_private);
+      return [...mine, ...shared].map((t) => ({ value: t.id, label: label(t) }));
+    }
+    return transferTargets.map((t) => ({ value: t.id, label: label(t) }));
+  }, [transferTargets, tab, memberById, currentUserId]);
 
   const today = new Date().toISOString().slice(0, 10);
   const ym = today.slice(0, 7);
@@ -261,7 +299,7 @@ export function FixedCostsView({
     const fc = fcById.get(occ.fixed_cost_id);
     if (!fc) return null;
     const purpose = FC_PURPOSE_MAP[fc.purpose];
-    const asset = fc.asset_id ? assetById.get(fc.asset_id) : null;
+    const assetName = resolveAssetName(fc.asset_id);
     const toAsset = fc.to_asset_id ? assetById.get(fc.to_asset_id) : null;
     const member = fc.member_user_id ? memberById.get(fc.member_user_id) : null;
     const day = Number(occ.due_on.slice(8, 10));
@@ -334,10 +372,10 @@ export function FixedCostsView({
                   style={{ backgroundColor: member.color }}
                 />
                 {member.display_name}
-                {(asset || toAsset) && " · "}
+                {(assetName || toAsset) && " · "}
               </>
             )}
-            {asset && <span className="truncate">{asset.name}</span>}
+            {assetName && <span className="truncate">{assetName}</span>}
             {toAsset && (
               <span className="flex items-center gap-0.5 truncate">
                 <ArrowRight className="h-3 w-3" />
@@ -554,6 +592,7 @@ export function FixedCostsView({
                   const groupColor = asset
                     ? ASSET_GROUP_MAP[asset.group_key as AssetGroupKey]?.color
                     : "#B0A89E";
+                  const fallbackName = resolveAssetName(assetId || null);
                   return (
                     <div key={assetId || "none"} className="flex items-center gap-2 text-sm">
                       <span
@@ -565,7 +604,7 @@ export function FixedCostsView({
                           ? asset.institution
                             ? `${asset.institution} · ${asset.name}`
                             : asset.name
-                          : "자산 미지정"}
+                          : (fallbackName ?? "자산 미지정")}
                       </span>
                       <span className="h-px flex-1 bg-border" />
                       <span className="shrink-0 font-semibold">
@@ -682,8 +721,8 @@ export function FixedCostsView({
                           ? "매년"
                           : `${fc.cycle_months}개월마다`}{" "}
                       · {fc.due_day === 0 ? "말일" : `${fc.due_day}일`}
-                      {fc.asset_id && assetById.get(fc.asset_id) && (
-                        <> · {assetById.get(fc.asset_id)!.name}</>
+                      {resolveAssetName(fc.asset_id) && (
+                        <> · {resolveAssetName(fc.asset_id)}</>
                       )}
                     </span>
                   </span>
@@ -755,9 +794,7 @@ export function FixedCostsView({
         familyId={familyId}
         currentUserId={currentUserId}
         members={members}
-        assets={assets.filter((a) =>
-          tab === "personal" ? a.is_private : !a.is_private,
-        )}
+        assetOptions={assetOptions}
         editing={editing}
         recordPrivate={tab === "personal"}
       />
