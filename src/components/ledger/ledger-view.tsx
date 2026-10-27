@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { SelectBox } from "@/components/ui/select-box";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FamilyMemberLite } from "@/lib/asset-constants";
-import type { AssetLite, Category, Transaction, TransferTarget } from "@/lib/ledger-constants";
+import type { AssetLite, Category, FlowTx, InboundTransfer, Transaction, TransferTarget } from "@/lib/ledger-constants";
 import { cn } from "@/lib/utils";
 
 const krw = new Intl.NumberFormat("ko-KR");
@@ -28,6 +28,8 @@ type Props = {
   initialAssetFilter?: string;
   initialTab?: "family" | "personal";
   transferTargets: TransferTarget[];
+  flowTransactions: FlowTx[];
+  inboundTransfers: InboundTransfer[];
 };
 
 function shiftMonth(month: string, delta: number): string {
@@ -49,6 +51,8 @@ export function LedgerView({
   initialAssetFilter = "",
   initialTab = "family",
   transferTargets,
+  flowTransactions,
+  inboundTransfers,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -85,40 +89,208 @@ export function LedgerView({
     [members],
   );
 
-  const filteredTransactions = useMemo(() => {
-    let list = transactions.filter((tx) =>
-      tab === "family" ? !tx.is_private : tx.is_private,
-    );
-    if (assetFilter) {
-      list = list.filter(
-        (tx) => tx.asset_id === assetFilter || tx.to_asset_id === assetFilter,
-      );
-    }
-    return list;
-  }, [transactions, assetFilter, tab]);
+  type RowItem = { tx: Transaction; flow: "in" | "out" | null; readonly: boolean };
 
-  const { income, expense, byDate } = useMemo(() => {
+  const myPrivateAssetIds = useMemo(
+    () => new Set(assets.filter((a) => a.is_private).map((a) => a.id)),
+    [assets],
+  );
+
+  /** 자산 공개 여부 — 목록에 없으면 타인 개인 자산으로 간주 */
+  const isPrivateAsset = (id: string | null): boolean => {
+    if (!id) return false;
+    const asset = assetById.get(id);
+    if (asset) return !!asset.is_private;
+    const target = targetById.get(id);
+    if (target) return target.is_private;
+    return true;
+  };
+
+  /** 현재 탭·자산 필터 기준의 입금/출금 분류 (null = 중립 이동) */
+  const flowFor = (row: {
+    type: Transaction["type"];
+    asset_id: string | null;
+    to_asset_id: string | null;
+    is_private: boolean;
+  }): "in" | "out" | null => {
+    if (assetFilter) {
+      if (row.type === "income") return row.asset_id === assetFilter ? "in" : null;
+      if (row.type === "expense") return row.asset_id === assetFilter ? "out" : null;
+      if (row.to_asset_id === assetFilter) return "in";
+      if (row.asset_id === assetFilter) return "out";
+      return null;
+    }
+    if (row.type === "income") return "in";
+    if (row.type === "expense") return "out";
+    if (tab === "family") {
+      // 개인→공동 유입 이체는 is_private=true로 들어온다
+      if (row.is_private) return "in";
+      return isPrivateAsset(row.to_asset_id) ? "out" : null; // 공동→개인(용돈)만 출금
+    }
+    // 개인 탭
+    if (!row.is_private) return "in"; // 공동→내 개인 (수신 전용 행)
+    return isPrivateAsset(row.to_asset_id) ? null : "out"; // 내 개인→공동만 출금
+  };
+
+  const touches = (row: { asset_id: string | null; to_asset_id: string | null }) =>
+    !assetFilter || row.asset_id === assetFilter || row.to_asset_id === assetFilter;
+
+  const monthStart = `${month}-01`;
+  const nextMonthStart = (() => {
+    const [y, m] = month.split("-").map(Number);
+    const d = new Date(y, m, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  })();
+
+  const inboundAsTx = useMemo(
+    () =>
+      inboundTransfers.map(
+        (t): Transaction => ({
+          id: t.id,
+          type: "transfer",
+          title: t.title,
+          amount: t.amount,
+          occurred_on: t.occurred_on,
+          category_id: null,
+          asset_id: t.from_asset_id,
+          to_asset_id: t.to_asset_id,
+          member_user_id: t.member_user_id,
+          memo: t.memo,
+          recur_group_id: null,
+          recur_rule: null,
+          is_private: true,
+        }),
+      ),
+    [inboundTransfers],
+  );
+
+  // 이번 달 표시 대상 (탭별 유니버스 + 자산 필터)
+  const monthItems = useMemo((): RowItem[] => {
+    const items: RowItem[] = [];
+    if (tab === "family") {
+      for (const tx of transactions) {
+        if (tx.is_private || !touches(tx)) continue;
+        items.push({ tx, flow: flowFor(tx), readonly: false });
+      }
+      for (const tx of inboundAsTx) {
+        if (tx.occurred_on < monthStart || tx.occurred_on >= nextMonthStart) continue;
+        if (!touches(tx)) continue;
+        items.push({ tx, flow: flowFor(tx), readonly: true });
+      }
+    } else {
+      for (const tx of transactions) {
+        if (tx.is_private) {
+          if (!touches(tx)) continue;
+          items.push({ tx, flow: flowFor(tx), readonly: false });
+        } else if (
+          tx.type === "transfer" &&
+          tx.to_asset_id &&
+          myPrivateAssetIds.has(tx.to_asset_id)
+        ) {
+          // 공동→내 개인 수신 (가족 기록, 읽기 전용)
+          if (!touches(tx)) continue;
+          items.push({ tx, flow: flowFor(tx), readonly: true });
+        }
+      }
+    }
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, inboundAsTx, tab, assetFilter, myPrivateAssetIds, monthStart, nextMonthStart]);
+
+  // 잔액 기초: 현재 범위 자산들의 실제 잔액에 정합하도록
+  // (비거래 기초 = 자산 잔액 합 − 전체 기간 흐름 합) + 월초 이전 흐름
+  const cumulativeBase = useMemo(() => {
+    let flowsAll = 0;
+    let flowsBeforeMonth = 0;
+    const apply = (
+      row: {
+        type: Transaction["type"];
+        amount: number | string;
+        occurred_on: string;
+        asset_id: string | null;
+        to_asset_id: string | null;
+        is_private: boolean;
+      },
+    ) => {
+      if (!touches(row)) return;
+      const flow = flowFor(row);
+      if (!flow) return;
+      const delta = flow === "in" ? Number(row.amount) : -Number(row.amount);
+      flowsAll += delta;
+      if (row.occurred_on < monthStart) flowsBeforeMonth += delta;
+    };
+
+    if (tab === "family") {
+      for (const row of flowTransactions) if (!row.is_private) apply(row);
+      for (const t of inboundTransfers) {
+        apply({
+          type: "transfer",
+          amount: t.amount,
+          occurred_on: t.occurred_on,
+          asset_id: t.from_asset_id,
+          to_asset_id: t.to_asset_id,
+          is_private: true,
+        });
+      }
+    } else {
+      for (const row of flowTransactions) {
+        if (row.is_private) apply(row);
+        else if (
+          row.type === "transfer" &&
+          row.to_asset_id &&
+          myPrivateAssetIds.has(row.to_asset_id)
+        )
+          apply(row);
+      }
+    }
+
+    // 범위 자산 잔액 합 (초기 금액·수동 보정 포함)
+    let balanceSum = 0;
+    for (const a of assets) {
+      if (assetFilter) {
+        if (a.id !== assetFilter) continue;
+      } else if (tab === "family" ? a.is_private : !a.is_private) {
+        continue;
+      }
+      balanceSum += Number(a.amount ?? 0);
+    }
+
+    const nonTxBase = balanceSum - flowsAll; // 초기 금액 + 수동 보정분
+    return nonTxBase + flowsBeforeMonth;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowTransactions, inboundTransfers, assets, tab, assetFilter, myPrivateAssetIds, monthStart]);
+
+  const { income, expense, byDate, cumulativeEnd } = useMemo(() => {
     let income = 0;
     let expense = 0;
     const byDate = new Map<
       string,
-      { items: Transaction[]; income: number; expense: number }
+      { items: RowItem[]; income: number; expense: number; cumulative: number }
     >();
 
-    for (const tx of filteredTransactions) {
-      const amt = Number(tx.amount);
-      if (tx.type === "income") income += amt;
-      if (tx.type === "expense") expense += amt;
+    for (const item of monthItems) {
+      const amt = Number(item.tx.amount);
+      if (item.flow === "in") income += amt;
+      if (item.flow === "out") expense += amt;
 
       const bucket =
-        byDate.get(tx.occurred_on) ?? { items: [], income: 0, expense: 0 };
-      bucket.items.push(tx);
-      if (tx.type === "income") bucket.income += amt;
-      if (tx.type === "expense") bucket.expense += amt;
-      byDate.set(tx.occurred_on, bucket);
+        byDate.get(item.tx.occurred_on) ??
+        { items: [], income: 0, expense: 0, cumulative: 0 };
+      bucket.items.push(item);
+      if (item.flow === "in") bucket.income += amt;
+      if (item.flow === "out") bucket.expense += amt;
+      byDate.set(item.tx.occurred_on, bucket);
     }
-    return { income, expense, byDate };
-  }, [filteredTransactions]);
+
+    // 일자 오름차순으로 누적 계산
+    let running = cumulativeBase;
+    for (const dateStr of [...byDate.keys()].sort()) {
+      const bucket = byDate.get(dateStr)!;
+      running += bucket.income - bucket.expense;
+      bucket.cumulative = running;
+    }
+    return { income, expense, byDate, cumulativeEnd: running };
+  }, [monthItems, cumulativeBase]);
 
   const [year, monthNum] = month.split("-").map(Number);
   const dates = [...byDate.keys()].sort((a, b) => (a < b ? 1 : -1));
@@ -132,6 +304,8 @@ export function LedgerView({
 
   function openEdit(tx: Transaction) {
     if (!canWrite) return;
+    // 읽기 전용 행: 가족 탭의 유입 이체 / 개인 탭의 공동→내 자산 수신
+    if (tab === "family" ? tx.is_private : !tx.is_private) return;
     setEditing(tx);
     setModalOpen(true);
   }
@@ -268,15 +442,15 @@ export function LedgerView({
               <ChevronRight />
             </Button>
           </div>
-          <dl className="grid grid-cols-3 gap-2 text-center">
+          <dl className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
             <div className="rounded-lg bg-muted/50 py-2.5">
-              <dt className="text-xs text-muted-foreground">수입</dt>
+              <dt className="text-xs text-muted-foreground">입금</dt>
               <dd className="text-base font-bold text-blue-600 dark:text-blue-400">
                 {krw.format(income)}원
               </dd>
             </div>
             <div className="rounded-lg bg-muted/50 py-2.5">
-              <dt className="text-xs text-muted-foreground">지출</dt>
+              <dt className="text-xs text-muted-foreground">출금</dt>
               <dd className="text-base font-bold text-primary">
                 {krw.format(expense)}원
               </dd>
@@ -292,12 +466,23 @@ export function LedgerView({
                 {krw.format(income - expense)}원
               </dd>
             </div>
+            <div className="rounded-lg bg-muted/50 py-2.5">
+              <dt className="text-xs text-muted-foreground">잔액</dt>
+              <dd
+                className={cn(
+                  "text-base font-bold",
+                  cumulativeEnd < 0 && "text-destructive",
+                )}
+              >
+                {krw.format(cumulativeEnd)}원
+              </dd>
+            </div>
           </dl>
         </CardContent>
       </Card>
 
       {/* ---------- 거래 목록 ---------- */}
-      {filteredTransactions.length === 0 ? (
+      {monthItems.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -339,10 +524,10 @@ export function LedgerView({
                       {d.toLocaleDateString("ko-KR", { weekday: "short" })}
                     </span>
                   </h2>
-                  <span className="flex items-baseline gap-2 text-xs">
+                  <span className="flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0.5 text-xs">
                     {bucket.income > 0 && (
                       <span className="text-muted-foreground">
-                        수입{" "}
+                        입금{" "}
                         <span className="font-semibold text-blue-600 dark:text-blue-400">
                           +{krw.format(bucket.income)}원
                         </span>
@@ -350,7 +535,7 @@ export function LedgerView({
                     )}
                     {bucket.expense > 0 && (
                       <span className="text-muted-foreground">
-                        지출{" "}
+                        출금{" "}
                         <span className="font-semibold text-primary">
                           -{krw.format(bucket.expense)}원
                         </span>
@@ -369,14 +554,37 @@ export function LedgerView({
                         {krw.format(bucket.income - bucket.expense)}원
                       </span>
                     </span>
+                    <span className="text-muted-foreground">
+                      잔액{" "}
+                      <span
+                        className={cn(
+                          "font-semibold",
+                          bucket.cumulative < 0 && "text-destructive",
+                        )}
+                      >
+                        {krw.format(bucket.cumulative)}원
+                      </span>
+                    </span>
                   </span>
                 </div>
                 <div className="divide-y rounded-xl border bg-card">
-                  {bucket.items.map((tx) => {
+                  {bucket.items.map(({ tx, flow, readonly }) => {
                     const category = tx.category_id
                       ? categoryById.get(tx.category_id)
                       : null;
-                    const asset = tx.asset_id ? assetById.get(tx.asset_id) : null;
+                    const assetRaw = tx.asset_id ? assetById.get(tx.asset_id) : null;
+                    const fromTarget =
+                      !assetRaw && tx.asset_id ? targetById.get(tx.asset_id) : null;
+                    const asset =
+                      assetRaw ??
+                      (fromTarget
+                        ? {
+                            name: `🔒 ${
+                              memberById.get(fromTarget.owner_user_id ?? "")
+                                ?.display_name ?? ""
+                            } ${fromTarget.name}`.trim(),
+                          }
+                        : null);
                     const toAssetRaw = tx.to_asset_id
                       ? assetById.get(tx.to_asset_id)
                       : null;
@@ -404,10 +612,10 @@ export function LedgerView({
                         key={tx.id}
                         type="button"
                         onClick={() => openEdit(tx)}
-                        disabled={!canWrite}
+                        disabled={!canWrite || readonly}
                         className={cn(
                           "flex w-full items-center gap-3 px-3.5 py-3 text-left",
-                          canWrite && "hover:bg-muted/40",
+                          canWrite && !readonly && "hover:bg-muted/40",
                         )}
                       >
                         <span
@@ -467,13 +675,12 @@ export function LedgerView({
                         <span
                           className={cn(
                             "shrink-0 text-sm font-bold",
-                            tx.type === "income" &&
-                              "text-blue-600 dark:text-blue-400",
-                            tx.type === "expense" && "text-foreground",
-                            tx.type === "transfer" && "text-muted-foreground",
+                            flow === "in" && "text-blue-600 dark:text-blue-400",
+                            flow === "out" && "text-foreground",
+                            flow === null && "text-muted-foreground",
                           )}
                         >
-                          {tx.type === "income" ? "+" : tx.type === "expense" ? "-" : ""}
+                          {flow === "in" ? "+" : flow === "out" ? "-" : ""}
                           {krw.format(amt)}원
                         </span>
                       </button>
