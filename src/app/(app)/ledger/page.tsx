@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { LedgerView } from "@/components/ledger/ledger-view";
 import type { FamilyMemberLite } from "@/lib/asset-constants";
-import type { AssetLite, Category, Transaction, TransferTarget } from "@/lib/ledger-constants";
+import type { AssetLite, Category, FlowTx, InboundTransfer, Transaction, TransferTarget } from "@/lib/ledger-constants";
 import { getUserAndMembership } from "@/lib/family";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,6 +39,8 @@ export default async function LedgerPage({
     { data: memberRows },
     { data: canEdit },
     { data: targetRows },
+    { data: flowRows },
+    { data: inboundRows },
   ] = await Promise.all([
     supabase
       .from("transactions")
@@ -58,7 +60,7 @@ export default async function LedgerPage({
       .order("sort_order", { ascending: true }),
     supabase
       .from("assets")
-      .select("id, name, institution, group_key, is_private")
+      .select("id, name, institution, group_key, is_private, amount")
       .eq("family_id", membership.family_id)
       .eq("is_archived", false)
       .order("created_at", { ascending: true }),
@@ -71,6 +73,14 @@ export default async function LedgerPage({
       p_module: "ledger",
     }),
     supabase.rpc("list_transfer_targets", {
+      p_family_id: membership.family_id,
+    }),
+    supabase
+      .from("transactions")
+      .select("type, amount, occurred_on, asset_id, to_asset_id, is_private")
+      .eq("family_id", membership.family_id)
+      .is("deleted_at", null),
+    supabase.rpc("list_shared_inbound_transfers", {
       p_family_id: membership.family_id,
     }),
   ]);
@@ -89,6 +99,8 @@ export default async function LedgerPage({
       initialAssetFilter={params.asset ?? ""}
       initialTab={params.tab === "personal" ? "personal" : "family"}
       transferTargets={(targetRows as TransferTarget[] | null) ?? []}
+      flowTransactions={(flowRows as FlowTx[] | null) ?? []}
+      inboundTransfers={(inboundRows as InboundTransfer[] | null) ?? []}
     />
   );
 }
