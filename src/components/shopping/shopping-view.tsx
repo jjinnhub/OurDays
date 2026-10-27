@@ -432,27 +432,36 @@ export function ShoppingView({
                   )}
                 </div>
 
+                {/* 모바일: 2열 그리드(항목·메모 / 수량·추가 폭 정렬), 데스크톱: 한 줄 */}
                 {canEdit && (
-                  <form onSubmit={addItem} className="flex flex-wrap gap-1.5">
+                  <form
+                    onSubmit={addItem}
+                    className="grid grid-cols-[minmax(0,1fr)_5rem] gap-1.5 sm:flex sm:flex-wrap"
+                  >
                     <Input
                       placeholder="항목 (예: 우유)"
-                      className="h-9 min-w-32 flex-1"
+                      className="h-9 sm:min-w-32 sm:flex-1"
                       value={itemName}
                       onChange={(e) => setItemName(e.target.value)}
                     />
                     <Input
                       placeholder="수량"
-                      className="h-9 w-20"
+                      className="h-9 w-full sm:w-20"
                       value={itemQty}
                       onChange={(e) => setItemQty(e.target.value)}
                     />
                     <Input
                       placeholder="메모 (선택)"
-                      className="h-9 min-w-28 flex-1"
+                      className="h-9 sm:min-w-28 sm:flex-1"
                       value={itemMemo}
                       onChange={(e) => setItemMemo(e.target.value)}
                     />
-                    <Button type="submit" size="sm" className="h-9" disabled={!itemName.trim()}>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-9 w-full sm:w-auto"
+                      disabled={!itemName.trim()}
+                    >
                       <Plus />
                       추가
                     </Button>
