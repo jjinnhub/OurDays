@@ -23,8 +23,10 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // 세션 토큰 갱신 (만료된 액세스 토큰을 리프레시)
-  await supabase.auth.getUser();
+  // 세션 토큰 갱신 — getSession은 쿠키의 토큰이 만료(임박)했을 때만
+  // 네트워크로 리프레시하고, 유효하면 호출 없이 통과한다.
+  // 인증 판정 자체는 각 페이지의 getUser()가 담당한다.
+  await supabase.auth.getSession();
 
   return response;
 }
