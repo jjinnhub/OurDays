@@ -37,6 +37,7 @@ export type AssetLite = {
   institution: string;
   group_key: string;
   is_private?: boolean;
+  amount?: number | string;
 };
 
 /** 이체 받는 자산 후보 (타인 개인 자산은 이름·명의자만) */
@@ -79,3 +80,25 @@ export type RecurRuleKey = (typeof RECUR_RULES)[number]["key"];
 export const RECUR_RULE_LABEL = Object.fromEntries(
   RECUR_RULES.map((r) => [r.key, r.label]),
 ) as Record<RecurRuleKey, string>;
+
+/** 개인 → 공동 자산 이체 (가족 집계·표시용, 전 필드 공개) */
+export type InboundTransfer = {
+  id: string;
+  title: string;
+  memo: string;
+  amount: number | string;
+  occurred_on: string;
+  member_user_id: string | null;
+  from_asset_id: string | null;
+  to_asset_id: string | null;
+};
+
+/** 잔액 계산용 전체 기간 거래 (최소 컬럼) */
+export type FlowTx = {
+  type: TxType;
+  amount: number | string;
+  occurred_on: string;
+  asset_id: string | null;
+  to_asset_id: string | null;
+  is_private: boolean;
+};
