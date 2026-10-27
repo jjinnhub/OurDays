@@ -6,6 +6,7 @@ export const PERMISSION_MODULES = [
   { key: "calendar", label: "캘린더" },
   { key: "trips", label: "여행" },
   { key: "gifts", label: "축의금" },
+  { key: "shopping", label: "장바구니" },
   { key: "files", label: "파일함" },
 ] as const;
 
