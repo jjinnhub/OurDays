@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Gift, Plus, Search, UserPlus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Gift, Plus, Search, UserPlus } from "lucide-react";
 
 import { ContactFormModal } from "@/components/gifts/contact-form-modal";
 import { GiftRecordFormModal } from "@/components/gifts/gift-record-form-modal";
@@ -21,6 +21,19 @@ import {
 import { cn } from "@/lib/utils";
 
 const krw = new Intl.NumberFormat("ko-KR");
+
+/** 페이지 번호 목록 — 많아지면 현재 페이지 주변과 양끝만 남기고 …으로 줄인다. */
+function buildPages(current: number, total: number) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const lo = Math.max(2, current - 1);
+  const hi = Math.min(total - 1, current + 1);
+  const out: (number | "gap-l" | "gap-r")[] = [1];
+  if (lo > 2) out.push("gap-l");
+  for (let p = lo; p <= hi; p++) out.push(p);
+  if (hi < total - 1) out.push("gap-r");
+  out.push(total);
+  return out;
+}
 
 type Props = {
   familyId: string;
@@ -96,6 +109,29 @@ export function GiftsView({ familyId, contacts, records, members, canEdit }: Pro
       return lb.localeCompare(la);
     });
   }, [contacts, query, relationFilter, statsByContact]);
+
+  // 관계인 페이지네이션 — 데스크톱 27개 / 모바일 10개
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(27);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const apply = () => setPageSize(mq.matches ? 27 : 10);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, relationFilter, pageSize]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredContacts.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagedContacts = useMemo(
+    () => filteredContacts.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredContacts, safePage, pageSize],
+  );
 
   const filteredRecords = useMemo(() => {
     const q = query.trim();
@@ -350,8 +386,9 @@ export function GiftsView({ familyId, contacts, records, members, canEdit }: Pro
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredContacts.map((contact) => {
+          <>
+            <div className="grid auto-rows-fr gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {pagedContacts.map((contact) => {
               const relation = GIFT_RELATION_MAP[contact.relation];
               const stat = statsByContact.get(contact.id);
               const owner = contact.owner_user_id
@@ -409,10 +446,66 @@ export function GiftsView({ familyId, contacts, records, members, canEdit }: Pro
                       {stat?.last ? stat.last.replaceAll("-", ".") : "기록 없음"}
                     </span>
                   </div>
+                  </button>
+                );
+              })}
+              {/* 마지막 페이지 등에서 그리드 높이가 줄지 않도록 빈 칸을 채워 페이지 바 위치 고정 */}
+              {pageCount > 1 &&
+                Array.from(
+                  { length: pageSize - pagedContacts.length },
+                  (_, i) => (
+                    <div
+                      key={`placeholder-${i}`}
+                      aria-hidden
+                      className="invisible rounded-xl border p-3.5"
+                    />
+                  ),
+                )}
+            </div>
+            {pageCount > 1 && (
+              <div className="flex items-center justify-center gap-1 pt-1">
+                <button
+                  type="button"
+                  disabled={safePage === 1}
+                  onClick={() => setPage(safePage - 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border bg-card text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-card"
+                  aria-label="이전 페이지"
+                >
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-              );
-            })}
-          </div>
+                {buildPages(safePage, pageCount).map((p) =>
+                  typeof p === "number" ? (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPage(p)}
+                      className={cn(
+                        "h-8 min-w-8 rounded-lg px-1.5 text-sm font-medium",
+                        p === safePage
+                          ? "bg-primary text-primary-foreground"
+                          : "border bg-card text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      {p}
+                    </button>
+                  ) : (
+                    <span key={p} className="px-1 text-sm text-muted-foreground">
+                      …
+                    </span>
+                  ),
+                )}
+                <button
+                  type="button"
+                  disabled={safePage === pageCount}
+                  onClick={() => setPage(safePage + 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border bg-card text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-card"
+                  aria-label="다음 페이지"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </>
         )
       ) : filteredRecords.length === 0 ? (
         <Card>
