@@ -10,6 +10,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingCart,
+  UtensilsCrossed,
 } from "lucide-react";
 
 export const metadata: Metadata = { title: "메뉴" };
@@ -21,6 +22,7 @@ const ITEMS = [
   { href: "/trips", label: "여행", icon: Plane },
   { href: "/gifts", label: "축의금", icon: Gift },
   { href: "/shopping", label: "장바구니", icon: ShoppingCart },
+  { href: "/meals", label: "식단표", icon: UtensilsCrossed },
   { href: "/files", label: "파일함", icon: FolderOpen },
   { href: "/settings", label: "설정", icon: Settings },
 ];
