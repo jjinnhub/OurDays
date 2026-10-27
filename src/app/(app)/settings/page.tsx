@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { ChangeColorSection } from "@/components/settings/change-color-section";
 import { DeleteFamilySection } from "@/components/settings/delete-family-section";
+import { LedgerResetSection } from "@/components/settings/ledger-reset-section";
 import { MemberPermissionsSection } from "@/components/settings/member-permissions-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getUserAndMembership } from "@/lib/family";
@@ -38,6 +39,11 @@ export default async function SettingsPage() {
   const usedByOthers = members
     .filter((m) => m.user_id !== user.id)
     .map((m) => m.color);
+
+  const { data: canResetFamily } = await supabase.rpc("can_edit_module", {
+    p_family_id: membership.family_id,
+    p_module: "ledger",
+  });
 
   const isOwner = membership.role === "owner";
   let permissionRows: MemberPermission[] = [];
@@ -91,6 +97,18 @@ export default async function SettingsPage() {
           />
           <p className="text-xs text-muted-foreground">호칭 변경은 준비 중이에요.</p>
           <LogoutButton />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">가계부 초기화</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LedgerResetSection
+            familyId={membership.family_id}
+            canResetFamily={Boolean(canResetFamily)}
+          />
         </CardContent>
       </Card>
 
