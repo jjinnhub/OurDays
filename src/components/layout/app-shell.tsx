@@ -15,6 +15,7 @@ import {
   Plus,
   ReceiptText,
   Settings,
+  ShoppingCart,
   Wallet,
 } from "lucide-react";
 
@@ -48,6 +49,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { href: "/calendar", label: "캘린더", icon: CalendarDays },
       { href: "/trips", label: "여행", icon: Plane },
       { href: "/gifts", label: "축의금", icon: Gift },
+      { href: "/shopping", label: "장바구니", icon: ShoppingCart },
     ],
   },
   {
