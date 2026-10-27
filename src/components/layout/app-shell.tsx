@@ -16,6 +16,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingCart,
+  UtensilsCrossed,
   Wallet,
 } from "lucide-react";
 
@@ -50,6 +51,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { href: "/trips", label: "여행", icon: Plane },
       { href: "/gifts", label: "축의금", icon: Gift },
       { href: "/shopping", label: "장바구니", icon: ShoppingCart },
+      { href: "/meals", label: "식단표", icon: UtensilsCrossed },
     ],
   },
   {
