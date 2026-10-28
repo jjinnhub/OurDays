@@ -9,6 +9,7 @@ import {
   Gift,
   Home,
   Landmark,
+  MapPin,
   Menu,
   MessageCircle,
   Plane,
@@ -52,6 +53,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { href: "/gifts", label: "축의금", icon: Gift },
       { href: "/shopping", label: "장바구니", icon: ShoppingCart },
       { href: "/meals", label: "식단표", icon: UtensilsCrossed },
+      { href: "/places", label: "여기어때", icon: MapPin },
     ],
   },
   {
