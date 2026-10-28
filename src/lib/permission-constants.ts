@@ -8,6 +8,7 @@ export const PERMISSION_MODULES = [
   { key: "gifts", label: "축의금" },
   { key: "shopping", label: "장바구니" },
   { key: "meals", label: "식단표" },
+  { key: "places", label: "여기어때" },
   { key: "files", label: "파일함" },
 ] as const;
 
