@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ChevronRight,
   FolderOpen,
+  ListTodo,
   MapPin,
   MessageCircle,
   Gift,
@@ -23,6 +24,7 @@ const ITEMS = [
   { href: "/trips", label: "여행", icon: Plane },
   { href: "/gifts", label: "축의금", icon: Gift },
   { href: "/shopping", label: "장바구니", icon: ShoppingCart },
+  { href: "/todos", label: "할 일", icon: ListTodo },
   { href: "/meals", label: "식단표", icon: UtensilsCrossed },
   { href: "/places", label: "여기어때", icon: MapPin },
   { href: "/files", label: "파일함", icon: FolderOpen },
