@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronLeft,
   ChevronRight,
   ExternalLink,
   MapPin,
@@ -30,6 +31,8 @@ import {
   PLACE_STATUSES,
   PLACE_STATUS_MAP,
   kakaoDirectionsUrl,
+  placeCategoryLabel,
+  searchCategoryLabel,
   type KakaoSearchResult,
   type Place,
   type PlaceCategory,
@@ -45,6 +48,19 @@ type Props = {
   members: FamilyMemberLite[];
   canEdit: boolean;
 };
+
+/** 페이지 번호 목록 — 많아지면 현재 페이지 주변과 양끝만 남기고 …으로 줄인다. */
+function buildPages(current: number, total: number) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const lo = Math.max(2, current - 1);
+  const hi = Math.min(total - 1, current + 1);
+  const out: (number | "gap-l" | "gap-r")[] = [1];
+  if (lo > 2) out.push("gap-l");
+  for (let p = lo; p <= hi; p++) out.push(p);
+  if (hi < total - 1) out.push("gap-r");
+  out.push(total);
+  return out;
+}
 
 export function PlacesView({
   familyId,
@@ -134,6 +150,57 @@ export function PlacesView({
     ? (places.find((p) => p.id === selectedId) ?? null)
     : null;
 
+  // 2차 필터 — 1차 필터 결과에 존재하는 카카오 카테고리 라벨 (지도 왼쪽 아래 칩)
+  const [kakaoFilter, setKakaoFilter] = useState<string | null>(null);
+  const kakaoCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of filteredPlaces) {
+      if (p.kakao_category) set.add(p.kakao_category);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "ko"));
+  }, [filteredPlaces]);
+
+  useEffect(() => {
+    setKakaoFilter(null);
+  }, [categoryFilter, statusFilter]);
+
+  useEffect(() => {
+    if (kakaoFilter && !kakaoCategories.includes(kakaoFilter)) {
+      setKakaoFilter(null);
+    }
+  }, [kakaoFilter, kakaoCategories]);
+
+  const visiblePlaces = useMemo(
+    () =>
+      kakaoFilter
+        ? filteredPlaces.filter((p) => p.kakao_category === kakaoFilter)
+        : filteredPlaces,
+    [filteredPlaces, kakaoFilter],
+  );
+
+  // 장소 리스트 페이지네이션 — 데스크톱 15개(5열×3줄) / 모바일 10개
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const apply = () => setPageSize(mq.matches ? 15 : 10);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [categoryFilter, statusFilter, kakaoFilter, pageSize]);
+
+  const pageCount = Math.max(1, Math.ceil(visiblePlaces.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagedPlaces = useMemo(
+    () => visiblePlaces.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [visiblePlaces, safePage, pageSize],
+  );
+
   // ---------- 기본 카테고리 시드 ----------
   useEffect(() => {
     if (!canEdit || initialCategories.length > 0) return;
@@ -199,7 +266,7 @@ export function PlacesView({
     for (const o of overlaysRef.current) o.setMap(null);
     overlaysRef.current = [];
 
-    for (const place of filteredPlaces) {
+    for (const place of visiblePlaces) {
       const status = PLACE_STATUS_MAP[place.status];
       const icon = place.category_id
         ? (catById.get(place.category_id)?.icon ?? "📍")
@@ -233,7 +300,7 @@ export function PlacesView({
       overlay.setMap(map);
       overlaysRef.current.push(overlay);
     }
-  }, [mapReady, filteredPlaces, catById]);
+  }, [mapReady, visiblePlaces, catById]);
 
   // 미리보기(검색 선택·지도 클릭) 지점 마커 표시 + 이동
   useEffect(() => {
@@ -312,6 +379,7 @@ export function PlacesView({
         x: String(preview.lng),
         y: String(preview.lat),
         category_group_code: "",
+        category_name: "",
         place_url: "",
       };
     setEditingPlace(null);
@@ -402,6 +470,7 @@ export function PlacesView({
           memo: formMemo.trim(),
           kakao_place_id: picked.id,
           kakao_url: picked.place_url,
+          kakao_category: placeCategoryLabel(picked),
         })
         .select()
         .single();
@@ -641,7 +710,7 @@ export function PlacesView({
         <div className="relative">
           <div
             ref={mapDivRef}
-            className="h-[340px] w-full rounded-xl border md:h-[440px]"
+            className="h-[340px] w-full rounded-xl border md:h-[640px]"
           />
 
           {/* 지도 위 검색창 */}
@@ -685,8 +754,13 @@ export function PlacesView({
                         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
-                            {r.place_name}
+                          <span className="flex items-center gap-1.5 text-sm font-medium">
+                            <span className="truncate">{r.place_name}</span>
+                            {r.category_name && (
+                              <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                                {searchCategoryLabel(r.category_name)}
+                              </span>
+                            )}
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
                             {r.road_address_name || r.address_name}
@@ -745,8 +819,43 @@ export function PlacesView({
         </div>
       )}
 
+      {/* ---------- 2차 필터 — 1차 결과의 카카오 카테고리 라벨 (지도와 카드 사이) ---------- */}
+      {kakaoCategories.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setKakaoFilter(null)}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-xs font-medium",
+              kakaoFilter === null
+                ? "border-primary bg-primary/10"
+                : "bg-card text-muted-foreground hover:bg-muted",
+            )}
+          >
+            전체
+          </button>
+          {kakaoCategories.map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() =>
+                setKakaoFilter((prev) => (prev === label ? null : label))
+              }
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-xs font-medium",
+                kakaoFilter === label
+                  ? "border-primary bg-primary/10"
+                  : "bg-card text-muted-foreground hover:bg-muted",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ---------- 장소 리스트 ---------- */}
-      {filteredPlaces.length === 0 ? (
+      {visiblePlaces.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
             {places.length === 0
@@ -755,8 +864,9 @@ export function PlacesView({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredPlaces.map((place) => {
+        <>
+          <div className="grid auto-rows-fr gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {pagedPlaces.map((place) => {
             const cat = place.category_id ? catById.get(place.category_id) : null;
             const owner = memberById.get(place.created_by);
             return (
@@ -774,6 +884,11 @@ export function PlacesView({
                   <span className="truncate text-sm font-semibold">
                     {place.name}
                   </span>
+                  {place.kakao_category && (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {place.kakao_category}
+                    </span>
+                  )}
                   <StatusBadge status={place.status} />
                 </div>
                 {place.address && (
@@ -796,9 +911,62 @@ export function PlacesView({
                   )}
                 </div>
               </button>
-            );
-          })}
-        </div>
+              );
+            })}
+            {/* 마지막 페이지 등에서 그리드 높이가 줄지 않도록 빈 칸을 채워 페이지 바 위치 고정 */}
+            {pageCount > 1 &&
+              Array.from({ length: pageSize - pagedPlaces.length }, (_, i) => (
+                <div
+                  key={`placeholder-${i}`}
+                  aria-hidden
+                  className="invisible rounded-xl border p-3.5"
+                />
+              ))}
+          </div>
+          {pageCount > 1 && (
+            <div className="flex items-center justify-center gap-1 pt-1">
+              <button
+                type="button"
+                disabled={safePage === 1}
+                onClick={() => setPage(safePage - 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border bg-card text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-card"
+                aria-label="이전 페이지"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {buildPages(safePage, pageCount).map((p) =>
+                typeof p === "number" ? (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPage(p)}
+                    className={cn(
+                      "h-8 min-w-8 rounded-lg px-1.5 text-sm font-medium",
+                      p === safePage
+                        ? "bg-primary text-primary-foreground"
+                        : "border bg-card text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {p}
+                  </button>
+                ) : (
+                  <span key={p} className="px-1 text-sm text-muted-foreground">
+                    …
+                  </span>
+                ),
+              )}
+              <button
+                type="button"
+                disabled={safePage === pageCount}
+                onClick={() => setPage(safePage + 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border bg-card text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-card"
+                aria-label="다음 페이지"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* ---------- 장소 상세 모달 ---------- */}
@@ -980,8 +1148,13 @@ export function PlacesView({
                         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
-                            {r.place_name}
+                          <span className="flex items-center gap-1.5 text-sm font-medium">
+                            <span className="truncate">{r.place_name}</span>
+                            {r.category_name && (
+                              <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                                {searchCategoryLabel(r.category_name)}
+                              </span>
+                            )}
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
                             {r.road_address_name || r.address_name}
