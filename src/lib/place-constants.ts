@@ -32,6 +32,7 @@ export type Place = {
   memo: string;
   kakao_place_id: string;
   kakao_url: string;
+  kakao_category: string;
   created_by: string;
   created_at: string;
 };
@@ -45,8 +46,32 @@ export type KakaoSearchResult = {
   x: string; // 경도
   y: string; // 위도
   category_group_code: string;
+  category_name: string; // "음식점 > 중식 > 중화요리" 형태
   place_url: string;
 };
+
+/** 검색 결과 표시용 — 분류 체인을 3단계까지 (예: "음식점 > 한식 > 찌개,전골") */
+export function searchCategoryLabel(categoryName: string): string {
+  return categoryName
+    .split(">")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" > ");
+}
+
+/** 저장용 카테고리 라벨 — 음식점은 마지막 세부 분류(칼국수·육류,고기 등), 카페/관광지는 그룹명 */
+export function placeCategoryLabel(r: KakaoSearchResult): string {
+  if (r.category_group_code === "CE7") return "카페";
+  if (r.category_group_code === "AT4") return "관광지";
+  const parts = (r.category_name ?? "")
+    .split(">")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const last = parts[parts.length - 1];
+  if (r.category_group_code === "FD6") return last ?? "음식점";
+  return last ?? "";
+}
 
 /** 카카오 카테고리 그룹 코드 → 기본 카테고리명 매핑 (이름이 일치하는 카테고리가 있을 때만 자동 선택) */
 export const KAKAO_GROUP_TO_CATEGORY: Record<string, string> = {
