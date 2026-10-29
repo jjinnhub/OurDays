@@ -25,7 +25,7 @@ export default async function PlacesPage() {
       supabase
         .from("places")
         .select(
-          "id, family_id, category_id, name, address, lat, lng, status, memo, kakao_place_id, kakao_url, created_by, created_at",
+          "id, family_id, category_id, name, address, lat, lng, status, memo, kakao_place_id, kakao_url, kakao_category, created_by, created_at",
         )
         .eq("family_id", membership.family_id)
         .order("created_at", { ascending: false }),
