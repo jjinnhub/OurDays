@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { FixedCostsView } from "@/components/fixed-costs/fixed-costs-view";
 import type { FamilyMemberLite } from "@/lib/asset-constants";
 import type { FcOccurrence, FixedCost } from "@/lib/fixed-cost-constants";
-import type { AssetLite, TransferTarget } from "@/lib/ledger-constants";
+import type { AssetLite, Category, TransferTarget } from "@/lib/ledger-constants";
 import { getUserAndMembership } from "@/lib/family";
 import { createClient } from "@/lib/supabase/server";
 
@@ -35,18 +35,19 @@ export default async function FixedCostsPage() {
     { data: budgetRow },
     { data: personalBudgetRow },
     { data: targetRows },
+    { data: categoryRows },
   ] = await Promise.all([
     supabase
       .from("fixed_costs")
       .select(
-        "id, name, amount, purpose, cycle_months, due_day, member_user_id, asset_id, to_asset_id, category_id, memo, start_on, end_on, is_active, is_private",
+        "id, name, amount, purpose, cycle_months, due_day, member_user_id, tx_type, asset_id, to_asset_id, from_asset_id, category_id, memo, start_on, end_on, is_active, is_private",
       )
       .eq("family_id", membership.family_id)
       .order("due_day", { ascending: true }),
     // 이번 달 전체 + 지난 미납
     supabase
       .from("fixed_cost_occurrences")
-      .select("id, fixed_cost_id, due_on, amount, status, paid_on")
+      .select("id, fixed_cost_id, due_on, amount, status, paid_on, tx_id")
       .eq("family_id", membership.family_id)
       .lt("due_on", nextMonthStart)
       .or(`due_on.gte.${monthStart},status.eq.pending`)
@@ -78,6 +79,13 @@ export default async function FixedCostsPage() {
     supabase.rpc("list_transfer_targets", {
       p_family_id: membership.family_id,
     }),
+    // 가계부 기록용 지출 카테고리
+    supabase
+      .from("categories")
+      .select("id, type, name, icon, color, sort_order")
+      .eq("family_id", membership.family_id)
+      .eq("type", "expense")
+      .order("sort_order", { ascending: true }),
   ]);
 
   return (
@@ -90,6 +98,7 @@ export default async function FixedCostsPage() {
       canEdit={Boolean(canEdit)}
       currentUserId={user.id}
       transferTargets={(targetRows as TransferTarget[] | null) ?? []}
+      categories={(categoryRows as Category[] | null) ?? []}
       expectedIncome={Number(
         (budgetRow as { expected_income: number | string } | null)?.expected_income ?? 0,
       )}
