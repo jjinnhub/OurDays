@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { SelectBox } from "@/components/ui/select-box";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FamilyMemberLite } from "@/lib/asset-constants";
-import type { AssetLite, Category, FlowTx, InboundTransfer, Transaction, TransferTarget } from "@/lib/ledger-constants";
+import type { AssetLite, Category, FlowTx, InboundTransfer, Transaction, TransferTarget, TxSuggestion } from "@/lib/ledger-constants";
 import { cn } from "@/lib/utils";
 
 const krw = new Intl.NumberFormat("ko-KR");
@@ -30,6 +30,7 @@ type Props = {
   transferTargets: TransferTarget[];
   flowTransactions: FlowTx[];
   inboundTransfers: InboundTransfer[];
+  txSuggestions: TxSuggestion[];
 };
 
 function shiftMonth(month: string, delta: number): string {
@@ -53,6 +54,7 @@ export function LedgerView({
   transferTargets,
   flowTransactions,
   inboundTransfers,
+  txSuggestions,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -711,6 +713,9 @@ export function LedgerView({
         editing={editing}
         defaultAssetId={assetFilter}
         recordPrivate={tab === "personal"}
+        suggestions={txSuggestions.filter((s) =>
+          tab === "personal" ? s.is_private : !s.is_private,
+        )}
         transferTargetOptions={
           tab === "personal"
             ? [
