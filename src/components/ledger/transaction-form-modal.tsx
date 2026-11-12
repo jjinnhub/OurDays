@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Loader2, Repeat, Trash2 } from "lucide-react";
 
@@ -20,6 +20,7 @@ import {
   type Category,
   type RecurRuleKey,
   type Transaction,
+  type TxSuggestion,
   type TxType,
 } from "@/lib/ledger-constants";
 import { createClient } from "@/lib/supabase/client";
@@ -40,6 +41,8 @@ type Props = {
   recordPrivate?: boolean;
   /** 이체 '받는 자산' 후보 (가족 탭: 구성원 개인 자산 포함) */
   transferTargetOptions?: { value: string; label: string }[];
+  /** 내용/메모 자동완성 소스 (현재 탭 범위의 최근 거래) */
+  suggestions?: TxSuggestion[];
 };
 
 function todayStr() {
@@ -137,6 +140,7 @@ export function TransactionFormModal({
   defaultAssetId = "",
   recordPrivate = false,
   transferTargetOptions,
+  suggestions,
 }: Props) {
   const router = useRouter();
   const [type, setType] = useState<TxType>("expense");
@@ -187,6 +191,47 @@ export function TransactionFormModal({
   const visibleCategories = categories.filter(
     (c) => type !== "transfer" && c.type === type,
   );
+
+  // ---------- 내용/메모 자동완성 ----------
+  const titlePool = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const s of suggestions ?? []) {
+      const t = s.title.trim();
+      if (t && !map.has(t)) map.set(t, s.category_id);
+    }
+    return [...map.entries()].map(([text, categoryId]) => ({ text, categoryId }));
+  }, [suggestions]);
+
+  const memoPool = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of suggestions ?? []) {
+      const m = s.memo.trim();
+      if (m) set.add(m);
+    }
+    return [...set];
+  }, [suggestions]);
+
+  const titleSuggestions = useMemo(() => {
+    const q = title.trim();
+    if (!q) return [];
+    return titlePool
+      .filter((s) => s.text.includes(q) && s.text !== q)
+      .slice(0, 6);
+  }, [title, titlePool]);
+
+  const memoSuggestions = useMemo(() => {
+    const q = memo.trim();
+    if (!q) return [];
+    return memoPool.filter((m) => m.includes(q) && m !== q).slice(0, 6);
+  }, [memo, memoPool]);
+
+  function pickTitleSuggestion(s: { text: string; categoryId: string | null }) {
+    setTitle(s.text);
+    // 같은 내용으로 쓰던 카테고리가 현재 유형에 있으면 자동 선택
+    if (s.categoryId && visibleCategories.some((c) => c.id === s.categoryId)) {
+      setCategoryId(s.categoryId);
+    }
+  }
 
   const assetOptions = [
     { value: "", label: "자산 선택 안 함" },
@@ -673,6 +718,19 @@ export function TransactionFormModal({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
+          {/* 후보 유무와 무관하게 높이를 예약해 모달 크기 고정 */}
+          <div className="flex h-7 items-center gap-1.5 overflow-x-auto whitespace-nowrap">
+            {titleSuggestions.map((s) => (
+              <button
+                key={s.text}
+                type="button"
+                onClick={() => pickTitleSuggestion(s)}
+                className="shrink-0 rounded-full border bg-card px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                {s.text}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* 메모 */}
@@ -685,6 +743,19 @@ export function TransactionFormModal({
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
           />
+          {/* 후보 유무와 무관하게 높이를 예약해 모달 크기 고정 */}
+          <div className="flex h-7 items-center gap-1.5 overflow-x-auto whitespace-nowrap">
+            {memoSuggestions.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMemo(m)}
+                className="shrink-0 rounded-full border bg-card px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                {m}
+              </button>
+            ))}
+          </div>
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
