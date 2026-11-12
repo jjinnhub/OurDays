@@ -31,8 +31,10 @@ export type FixedCost = {
   cycle_months: number;
   due_day: number; // 0 = 말일
   member_user_id: string | null; // null = 공동
+  tx_type: "expense" | "transfer";
   asset_id: string | null;
   to_asset_id: string | null;
+  from_asset_id: string | null; // 이체: 보내는 자산 (받는 쪽은 asset_id)
   category_id: string | null;
   memo: string;
   start_on: string;
@@ -48,4 +50,5 @@ export type FcOccurrence = {
   amount: number | string;
   status: "pending" | "paid" | "skipped";
   paid_on: string | null;
+  tx_id: string | null; // 납부 시 생성된 가계부 거래
 };
