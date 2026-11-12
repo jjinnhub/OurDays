@@ -266,7 +266,7 @@ export function FixedCostsView({
     setPayAssetId(
       (fc?.tx_type === "transfer" ? fc?.from_asset_id : fc?.asset_id) ?? "",
     );
-    setPayMemo("");
+    setPayMemo(fc?.memo ?? "");
     setPayTarget(occ);
     setError(null);
   }
