@@ -93,6 +93,14 @@ export type InboundTransfer = {
   to_asset_id: string | null;
 };
 
+/** 내용/메모 자동완성용 최근 거래 (최소 컬럼) */
+export type TxSuggestion = {
+  title: string;
+  memo: string;
+  category_id: string | null;
+  is_private: boolean;
+};
+
 /** 잔액 계산용 전체 기간 거래 (최소 컬럼) */
 export type FlowTx = {
   type: TxType;
