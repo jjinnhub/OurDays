@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Repeat, Trash2 } from "lucide-react";
+import { Copy, Loader2, Repeat, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -159,6 +159,8 @@ export function TransactionFormModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [copyPanelOpen, setCopyPanelOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -178,6 +180,7 @@ export function TransactionFormModal({
     setInstallmentMonths(null);
     setRecurRule(null);
     setConfirmDelete(false);
+    setCopyPanelOpen(false);
     setError(null);
   }, [open, editing, currentUserId, defaultAssetId]);
 
@@ -312,6 +315,42 @@ export function TransactionFormModal({
       } catch {
         // 저장 실패 무시
       }
+    }
+    onClose();
+    router.refresh();
+  }
+
+  /** 현재 입력값 그대로 새 거래로 복사 — 오늘 날짜 또는 작성한 날짜 */
+  async function copyTx(dateMode: "today" | "original") {
+    const amount = Number(amountText.replace(/[^0-9]/g, ""));
+    if (!amount) {
+      setError("금액을 입력해 주세요.");
+      return;
+    }
+    if (type !== "transfer" && !categoryId) {
+      setError("카테고리를 선택해 주세요.");
+      return;
+    }
+    setCopying(true);
+    setError(null);
+    const supabase = createClient();
+    const { error: dbError } = await supabase.from("transactions").insert({
+      family_id: familyId,
+      type,
+      title: title.trim(),
+      amount,
+      occurred_on: dateMode === "today" ? todayStr() : date,
+      category_id: type === "transfer" ? null : categoryId,
+      asset_id: assetId || null,
+      to_asset_id: type === "transfer" ? toAssetId || null : null,
+      member_user_id: isPrivateRecord ? currentUserId : memberUserId || null,
+      memo: memo.trim(),
+      is_private: isPrivateRecord,
+    });
+    setCopying(false);
+    if (dbError) {
+      setError(dbError.message);
+      return;
     }
     onClose();
     router.refresh();
@@ -679,6 +718,33 @@ export function TransactionFormModal({
           </div>
         )}
 
+        {copyPanelOpen && (
+          <div className="space-y-2 rounded-lg border p-3">
+            <p className="text-sm font-medium">어떤 날짜로 복사할까요?</p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={copying}
+                onClick={() => copyTx("today")}
+              >
+                {copying && <Loader2 className="animate-spin" />}
+                오늘 날짜로 복사
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={copying}
+                onClick={() => copyTx("original")}
+              >
+                작성한 날짜로 복사
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2 pt-1">
           {editing &&
             (confirmDelete && !editing.recur_group_id ? (
@@ -702,6 +768,20 @@ export function TransactionFormModal({
                 <Trash2 />
               </Button>
             ))}
+          {editing && !confirmDelete && (
+            <Button
+              variant="outline"
+              className="h-10 flex-1"
+              disabled={copying}
+              onClick={() => {
+                setCopyPanelOpen((v) => !v);
+                setConfirmDelete(false);
+              }}
+            >
+              <Copy />
+              복사
+            </Button>
+          )}
           <Button className="h-10 flex-1" disabled={saving} onClick={save}>
             {saving && <Loader2 className="animate-spin" />}
             {editing ? "저장" : "추가"}
