@@ -16,7 +16,7 @@ import {
   type FcPurposeKey,
   type FixedCost,
 } from "@/lib/fixed-cost-constants";
-import { formatAmountInput } from "@/lib/ledger-constants";
+import { formatAmountInput, type Category } from "@/lib/ledger-constants";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +31,8 @@ type Props = {
   currentUserId: string;
   /** 내 예산 탭에서 열면 true — 나만 보는 항목으로 기록 */
   recordPrivate?: boolean;
+  /** 가계부 기록용 지출 카테고리 */
+  categories: Category[];
 };
 
 const DUE_DAY_OPTIONS = [
@@ -50,6 +52,7 @@ export function FixedCostFormModal({
   editing,
   currentUserId,
   recordPrivate = false,
+  categories,
 }: Props) {
   const isPrivateRecord = editing ? editing.is_private : recordPrivate;
   const router = useRouter();
@@ -59,7 +62,10 @@ export function FixedCostFormModal({
   const [cycle, setCycle] = useState("1");
   const [dueDay, setDueDay] = useState("1");
   const [memberUserId, setMemberUserId] = useState(""); // "" = 공동
+  const [txType, setTxType] = useState<"expense" | "transfer">("expense");
   const [assetId, setAssetId] = useState("");
+  const [fromAssetId, setFromAssetId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [startOn, setStartOn] = useState("");
   const [endOn, setEndOn] = useState("");
   const [memo, setMemo] = useState("");
@@ -77,7 +83,10 @@ export function FixedCostFormModal({
     setCycle(String(editing?.cycle_months ?? 1));
     setDueDay(String(editing?.due_day ?? 1));
     setMemberUserId(editing?.member_user_id ?? "");
+    setTxType(editing?.tx_type ?? "expense");
     setAssetId(editing?.asset_id ?? "");
+    setFromAssetId(editing?.from_asset_id ?? "");
+    setCategoryId(editing?.category_id ?? "");
     setStartOn(editing?.start_on ?? new Date().toISOString().slice(0, 10));
     setEndOn(editing?.end_on ?? "");
     setMemo(editing?.memo ?? "");
@@ -100,6 +109,10 @@ export function FixedCostFormModal({
       setError("분배할 자산을 선택해 주세요.");
       return;
     }
+    if (txType === "transfer" && fromAssetId && fromAssetId === assetId) {
+      setError("보내는 자산과 분배 자산이 같아요.");
+      return;
+    }
     setSaving(true);
     setError(null);
 
@@ -112,9 +125,11 @@ export function FixedCostFormModal({
       due_day: Number(dueDay),
       member_user_id: isPrivateRecord ? currentUserId : memberUserId || null,
       is_private: isPrivateRecord,
+      tx_type: txType,
       asset_id: assetId,
       to_asset_id: null,
-      category_id: null,
+      from_asset_id: txType === "transfer" ? fromAssetId || null : null,
+      category_id: txType === "expense" ? categoryId || null : null,
       start_on: startOn,
       end_on: endOn || null,
       memo: memo.trim(),
@@ -233,8 +248,53 @@ export function FixedCostFormModal({
           </div>
         </div>
 
+        {/* 거래 유형 — 납부 체크 시 가계부에 기록되는 방식 */}
         <div className="space-y-2">
-          <Label>자산</Label>
+          <Label>거래 유형</Label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(
+              [
+                { key: "expense", label: "지출", hint: "통신비·보험료 등" },
+                { key: "transfer", label: "이체", hint: "용돈·적금 등" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTxType(t.key)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-left transition-colors",
+                  txType === t.key
+                    ? "border-primary bg-primary/10"
+                    : "bg-card hover:bg-muted",
+                )}
+              >
+                <span className="block text-sm font-medium">{t.label}</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {t.hint}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {txType === "transfer" && (
+          <div className="space-y-2">
+            <Label>보내는 자산</Label>
+            <SelectBox
+              value={fromAssetId}
+              onChange={setFromAssetId}
+              placeholder="예: 고정비 계좌"
+              options={assetOptions}
+            />
+            <p className="text-xs text-muted-foreground">
+              납부 체크 시 보내는 자산 → 분배 자산 이체로 가계부에 기록돼요.
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <Label>{txType === "transfer" ? "분배 자산 (받는 자산)" : "자산"}</Label>
           <SelectBox
             value={assetId}
             onChange={setAssetId}
@@ -242,6 +302,27 @@ export function FixedCostFormModal({
             options={assetOptions}
           />
         </div>
+
+        {txType === "expense" && (
+          <div className="space-y-2">
+            <Label>
+              가계부 카테고리{" "}
+              <span className="font-normal text-muted-foreground">(선택)</span>
+            </Label>
+            <SelectBox
+              value={categoryId}
+              onChange={setCategoryId}
+              placeholder="납부 체크 시 사용할 카테고리"
+              options={[
+                { value: "", label: "선택 안 함" },
+                ...categories.map((c) => ({
+                  value: c.id,
+                  label: `${c.icon} ${c.name}`,
+                })),
+              ]}
+            />
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
