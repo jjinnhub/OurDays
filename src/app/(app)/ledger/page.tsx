@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { LedgerView } from "@/components/ledger/ledger-view";
 import type { FamilyMemberLite } from "@/lib/asset-constants";
-import type { AssetLite, Category, FlowTx, InboundTransfer, Transaction, TransferTarget } from "@/lib/ledger-constants";
+import type { AssetLite, Category, FlowTx, InboundTransfer, Transaction, TransferTarget, TxSuggestion } from "@/lib/ledger-constants";
 import { getUserAndMembership } from "@/lib/family";
 import { createClient } from "@/lib/supabase/server";
 
@@ -41,6 +41,7 @@ export default async function LedgerPage({
     { data: targetRows },
     { data: flowRows },
     { data: inboundRows },
+    { data: suggestionRows },
   ] = await Promise.all([
     supabase
       .from("transactions")
@@ -83,6 +84,14 @@ export default async function LedgerPage({
     supabase.rpc("list_shared_inbound_transfers", {
       p_family_id: membership.family_id,
     }),
+    // 내용/메모 자동완성용 최근 거래 (중복 제거는 클라이언트에서)
+    supabase
+      .from("transactions")
+      .select("title, memo, category_id, is_private")
+      .eq("family_id", membership.family_id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(500),
   ]);
 
   return (
@@ -101,6 +110,7 @@ export default async function LedgerPage({
       transferTargets={(targetRows as TransferTarget[] | null) ?? []}
       flowTransactions={(flowRows as FlowTx[] | null) ?? []}
       inboundTransfers={(inboundRows as InboundTransfer[] | null) ?? []}
+      txSuggestions={(suggestionRows as TxSuggestion[] | null) ?? []}
     />
   );
 }
