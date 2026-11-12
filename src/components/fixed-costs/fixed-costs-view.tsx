@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
+import { SelectBox } from "@/components/ui/select-box";
 import { ASSET_GROUP_MAP, type AssetGroupKey } from "@/lib/asset-constants";
 import type { FamilyMemberLite } from "@/lib/asset-constants";
 import {
@@ -26,7 +27,7 @@ import {
   type FcOccurrence,
   type FixedCost,
 } from "@/lib/fixed-cost-constants";
-import type { AssetLite, TransferTarget } from "@/lib/ledger-constants";
+import type { AssetLite, Category, TransferTarget } from "@/lib/ledger-constants";
 import { formatAmountInput } from "@/lib/ledger-constants";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,8 @@ type Props = {
   expectedIncome: number;
   /** 내 월 예산 (personal_budget_settings) */
   expectedIncomePersonal: number;
+  /** 가계부 기록용 지출 카테고리 */
+  categories: Category[];
 };
 
 export function FixedCostsView({
@@ -60,6 +63,7 @@ export function FixedCostsView({
   transferTargets,
   expectedIncome,
   expectedIncomePersonal,
+  categories,
 }: Props) {
   const [tab, setTab] = useState<"family" | "personal">("family");
   const canWrite = tab === "personal" ? true : canEdit;
@@ -69,6 +73,10 @@ export function FixedCostsView({
   const [editing, setEditing] = useState<FixedCost | null>(null);
   const [payTarget, setPayTarget] = useState<FcOccurrence | null>(null);
   const [payDate, setPayDate] = useState("");
+  const [payRecord, setPayRecord] = useState(true);
+  const [payCategoryId, setPayCategoryId] = useState("");
+  const [payAssetId, setPayAssetId] = useState("");
+  const [payMemo, setPayMemo] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,19 +259,39 @@ export function FixedCostsView({
 
   function openPay(occ: FcOccurrence) {
     if (!canWrite) return;
+    const fc = fcById.get(occ.fixed_cost_id);
     setPayDate(occ.due_on);
+    setPayRecord(true);
+    setPayCategoryId(fc?.category_id ?? "");
+    setPayAssetId(
+      (fc?.tx_type === "transfer" ? fc?.from_asset_id : fc?.asset_id) ?? "",
+    );
+    setPayMemo("");
     setPayTarget(occ);
     setError(null);
   }
 
   async function confirmPay() {
     if (!payTarget) return;
+    const fc = fcById.get(payTarget.fixed_cost_id);
+    if (payRecord && fc?.tx_type === "transfer" && !payAssetId) {
+      setError("보내는 자산을 선택해 주세요.");
+      return;
+    }
+    if (payRecord && fc?.tx_type !== "transfer" && !payCategoryId) {
+      setError("가계부 카테고리를 선택해 주세요.");
+      return;
+    }
     setBusyId(payTarget.id);
     setError(null);
     const supabase = createClient();
     const { error: rpcError } = await supabase.rpc("pay_fixed_cost_occurrence", {
       p_occurrence_id: payTarget.id,
       p_paid_on: payDate || null,
+      p_record_tx: payRecord,
+      p_category_id: payRecord && fc?.tx_type !== "transfer" ? payCategoryId || null : null,
+      p_asset_id: payRecord ? payAssetId || null : null,
+      p_memo: payRecord ? payMemo.trim() : "",
     });
     setBusyId(null);
     if (rpcError) {
@@ -771,10 +799,99 @@ export function FixedCostsView({
                 onChange={(e) => setPayDate(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                기본값은 납부 예정일이에요. 실제 납부한 날로 바꿀 수 있어요. 가계부에는
-                자동으로 기록되지 않아요.
+                기본값은 납부 예정일이에요. 실제 납부한 날로 바꿀 수 있어요.
               </p>
             </div>
+
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={payRecord}
+                onChange={(e) => setPayRecord(e.target.checked)}
+                className="h-4 w-4 accent-[hsl(var(--primary))]"
+              />
+              가계부에 기록
+            </label>
+
+            {payRecord &&
+              (() => {
+                const fc = fcById.get(payTarget.fixed_cost_id);
+                if (!fc) return null;
+                return fc.tx_type === "transfer" ? (
+                  <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                    <div className="space-y-2">
+                      <Label>보내는 자산</Label>
+                      <SelectBox
+                        value={payAssetId}
+                        onChange={setPayAssetId}
+                        placeholder="예: 고정비 계좌"
+                        options={assetOptions}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      받는 자산: {resolveAssetName(fc.asset_id) ?? "분배 자산"} ·
+                      이체로 기록돼요.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="payMemo">메모 (선택)</Label>
+                      <Input
+                        id="payMemo"
+                        maxLength={100}
+                        value={payMemo}
+                        onChange={(e) => setPayMemo(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>카테고리</Label>
+                        <SelectBox
+                          value={payCategoryId}
+                          onChange={setPayCategoryId}
+                          placeholder="선택"
+                          options={categories.map((c) => ({
+                            value: c.id,
+                            label: `${c.icon} ${c.name}`,
+                          }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>결제 수단</Label>
+                        <SelectBox
+                          value={payAssetId}
+                          onChange={setPayAssetId}
+                          placeholder="자산 선택 안 함"
+                          options={[{ value: "", label: "자산 선택 안 함" }, ...assetOptions]}
+                        />
+                      </div>
+                    </div>
+                    {(() => {
+                      const t = payAssetId ? targetById.get(payAssetId) : null;
+                      if (!t?.is_private) return null;
+                      return t.owner_user_id === currentUserId ? (
+                        <p className="text-xs text-muted-foreground">
+                          🔒 내 개인 자산이라 개인 가계부에 기록돼요.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-destructive">
+                          타인의 개인 자산은 결제 수단으로 쓸 수 없어요.
+                        </p>
+                      );
+                    })()}
+                    <div className="space-y-2">
+                      <Label htmlFor="payMemo">메모 (선택)</Label>
+                      <Input
+                        id="payMemo"
+                        maxLength={100}
+                        value={payMemo}
+                        onChange={(e) => setPayMemo(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button
               className="h-10 w-full"
@@ -797,6 +914,7 @@ export function FixedCostsView({
         assetOptions={assetOptions}
         editing={editing}
         recordPrivate={tab === "personal"}
+        categories={categories}
       />
     </div>
   );
