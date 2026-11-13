@@ -77,6 +77,7 @@ export function FixedCostsView({
   const [payCategoryId, setPayCategoryId] = useState("");
   const [payAssetId, setPayAssetId] = useState("");
   const [payMemo, setPayMemo] = useState("");
+  const [payAmountText, setPayAmountText] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,6 +137,29 @@ export function FixedCostsView({
 
   const today = new Date().toISOString().slice(0, 10);
   const ym = today.slice(0, 7);
+
+  /** 자산별 요약을 명의자별로 묶는다 — 명의자 보고 그 계좌로 바로 이체하는 용도 */
+  const buildOwnerGroups = (assetTotals: Map<string, number>) => {
+    const groups = new Map<
+      string, // owner_user_id ("" = 공동/명의 없음)
+      { total: number; items: { assetId: string; total: number }[] }
+    >();
+    for (const [assetId, total] of assetTotals) {
+      const target = assetId ? targetById.get(assetId) : null;
+      const ownerKey = target?.owner_user_id ?? "";
+      const group = groups.get(ownerKey) ?? { total: 0, items: [] };
+      group.total += total;
+      group.items.push({ assetId, total });
+      groups.set(ownerKey, group);
+    }
+    return [...groups.entries()]
+      .map(([ownerKey, g]) => ({
+        ownerKey,
+        total: g.total,
+        items: g.items.sort((a, b) => b.total - a.total),
+      }))
+      .sort((a, b) => b.total - a.total);
+  };
 
   const { overdue, thisMonth, summary, purposeTotals, assetTotals, sections, noOccurrence } =
     useMemo(() => {
@@ -267,6 +291,7 @@ export function FixedCostsView({
       (fc?.tx_type === "transfer" ? fc?.from_asset_id : fc?.asset_id) ?? "",
     );
     setPayMemo(fc?.memo ?? "");
+    setPayAmountText(Number(occ.amount).toLocaleString("ko-KR"));
     setPayTarget(occ);
     setError(null);
   }
@@ -274,6 +299,11 @@ export function FixedCostsView({
   async function confirmPay() {
     if (!payTarget) return;
     const fc = fcById.get(payTarget.fixed_cost_id);
+    const payAmount = Number(payAmountText.replace(/[^0-9]/g, ""));
+    if (payRecord && !payAmount) {
+      setError("금액을 입력해 주세요.");
+      return;
+    }
     if (payRecord && fc?.tx_type === "transfer" && !payAssetId) {
       setError("보내는 자산을 선택해 주세요.");
       return;
@@ -292,6 +322,7 @@ export function FixedCostsView({
       p_category_id: payRecord && fc?.tx_type !== "transfer" ? payCategoryId || null : null,
       p_asset_id: payRecord ? payAssetId || null : null,
       p_memo: payRecord ? payMemo.trim() : "",
+      p_amount: payRecord ? payAmount : null,
     });
     setBusyId(null);
     if (rpcError) {
@@ -612,35 +643,62 @@ export function FixedCostsView({
             <CardHeader className="px-4 pb-1.5 pt-3.5">
               <CardTitle className="text-base">자산별 요약</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1.5 px-4 pb-3.5 pt-0">
-              {[...assetTotals.entries()]
-                .sort((a, b) => b[1] - a[1])
-                .map(([assetId, total]) => {
-                  const asset = assetId ? assetById.get(assetId) : null;
-                  const groupColor = asset
-                    ? ASSET_GROUP_MAP[asset.group_key as AssetGroupKey]?.color
-                    : "#B0A89E";
-                  const fallbackName = resolveAssetName(assetId || null);
-                  return (
-                    <div key={assetId || "none"} className="flex items-center gap-2 text-sm">
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: groupColor }}
-                      />
-                      <span className="shrink-0 font-medium">
-                        {asset
-                          ? asset.institution
-                            ? `${asset.institution} · ${asset.name}`
-                            : asset.name
-                          : (fallbackName ?? "자산 미지정")}
-                      </span>
+            <CardContent className="space-y-3 px-4 pb-3.5 pt-0">
+              {buildOwnerGroups(assetTotals).map((group) => {
+                const owner = group.ownerKey
+                  ? memberById.get(group.ownerKey)
+                  : null;
+                return (
+                  <div key={group.ownerKey || "shared"} className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-sm">
+                      {owner ? (
+                        <>
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: owner.color }}
+                          />
+                          <span className="font-semibold">{owner.display_name}</span>
+                        </>
+                      ) : (
+                        <span className="font-semibold">🏡 공동</span>
+                      )}
                       <span className="h-px flex-1 bg-border" />
-                      <span className="shrink-0 font-semibold">
-                        {krw.format(total)}원
+                      <span className="shrink-0 font-bold">
+                        {krw.format(group.total)}원
                       </span>
                     </div>
-                  );
-                })}
+                    {group.items.map(({ assetId, total }) => {
+                      const asset = assetId ? assetById.get(assetId) : null;
+                      const groupColor = asset
+                        ? ASSET_GROUP_MAP[asset.group_key as AssetGroupKey]?.color
+                        : "#B0A89E";
+                      const fallbackName = resolveAssetName(assetId || null);
+                      return (
+                        <div
+                          key={assetId || "none"}
+                          className="flex items-center gap-2 pl-4 text-sm"
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: groupColor }}
+                          />
+                          <span className="shrink-0 text-muted-foreground">
+                            {asset
+                              ? asset.institution
+                                ? `${asset.institution} · ${asset.name}`
+                                : asset.name
+                              : (fallbackName ?? "자산 미지정")}
+                          </span>
+                          <span className="h-px flex-1 bg-border/60" />
+                          <span className="shrink-0 font-medium">
+                            {krw.format(total)}원
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         </div>
@@ -820,6 +878,18 @@ export function FixedCostsView({
                 return fc.tx_type === "transfer" ? (
                   <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
                     <div className="space-y-2">
+                      <Label htmlFor="payAmount">금액</Label>
+                      <Input
+                        id="payAmount"
+                        inputMode="numeric"
+                        className="text-right"
+                        value={payAmountText ? `₩ ${payAmountText}` : ""}
+                        onChange={(e) =>
+                          setPayAmountText(formatAmountInput(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label>보내는 자산</Label>
                       <SelectBox
                         value={payAssetId}
@@ -844,6 +914,18 @@ export function FixedCostsView({
                   </div>
                 ) : (
                   <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="payAmount">금액</Label>
+                      <Input
+                        id="payAmount"
+                        inputMode="numeric"
+                        className="text-right"
+                        value={payAmountText ? `₩ ${payAmountText}` : ""}
+                        onChange={(e) =>
+                          setPayAmountText(formatAmountInput(e.target.value))
+                        }
+                      />
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>카테고리</Label>
