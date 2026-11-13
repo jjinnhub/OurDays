@@ -41,6 +41,7 @@ export default async function LedgerPage({
     { data: targetRows },
     { data: flowRows },
     { data: inboundRows },
+    { data: privateInboundRows },
     { data: suggestionRows },
   ] = await Promise.all([
     supabase
@@ -84,6 +85,9 @@ export default async function LedgerPage({
     supabase.rpc("list_shared_inbound_transfers", {
       p_family_id: membership.family_id,
     }),
+    supabase.rpc("list_private_inbound_transfers", {
+      p_family_id: membership.family_id,
+    }),
     // 내용/메모 자동완성용 최근 거래 (중복 제거는 클라이언트에서)
     supabase
       .from("transactions")
@@ -110,6 +114,7 @@ export default async function LedgerPage({
       transferTargets={(targetRows as TransferTarget[] | null) ?? []}
       flowTransactions={(flowRows as FlowTx[] | null) ?? []}
       inboundTransfers={(inboundRows as InboundTransfer[] | null) ?? []}
+      privateInboundTransfers={(privateInboundRows as InboundTransfer[] | null) ?? []}
       txSuggestions={(suggestionRows as TxSuggestion[] | null) ?? []}
     />
   );
