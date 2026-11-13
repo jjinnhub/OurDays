@@ -30,6 +30,8 @@ type Props = {
   transferTargets: TransferTarget[];
   flowTransactions: FlowTx[];
   inboundTransfers: InboundTransfer[];
+  /** 다른 구성원 개인 자산 → 내 개인 자산 이체 (개인 탭 수신 전용 행) */
+  privateInboundTransfers: InboundTransfer[];
   txSuggestions: TxSuggestion[];
 };
 
@@ -54,6 +56,7 @@ export function LedgerView({
   transferTargets,
   flowTransactions,
   inboundTransfers,
+  privateInboundTransfers,
   txSuggestions,
 }: Props) {
   const router = useRouter();
@@ -131,6 +134,13 @@ export function LedgerView({
     }
     // 개인 탭
     if (!row.is_private) return "in"; // 공동→내 개인 (수신 전용 행)
+    // 타인 개인→내 개인 수신 (수신 전용 행)
+    if (
+      row.to_asset_id &&
+      myPrivateAssetIds.has(row.to_asset_id) &&
+      !(row.asset_id && myPrivateAssetIds.has(row.asset_id))
+    )
+      return "in";
     return isPrivateAsset(row.to_asset_id) ? null : "out"; // 내 개인→공동만 출금
   };
 
@@ -166,6 +176,28 @@ export function LedgerView({
     [inboundTransfers],
   );
 
+  const privateInboundAsTx = useMemo(
+    () =>
+      privateInboundTransfers.map(
+        (t): Transaction => ({
+          id: t.id,
+          type: "transfer",
+          title: t.title,
+          amount: t.amount,
+          occurred_on: t.occurred_on,
+          category_id: null,
+          asset_id: t.from_asset_id,
+          to_asset_id: t.to_asset_id,
+          member_user_id: t.member_user_id,
+          memo: t.memo,
+          recur_group_id: null,
+          recur_rule: null,
+          is_private: true,
+        }),
+      ),
+    [privateInboundTransfers],
+  );
+
   // 이번 달 표시 대상 (탭별 유니버스 + 자산 필터)
   const monthItems = useMemo((): RowItem[] => {
     const items: RowItem[] = [];
@@ -194,10 +226,16 @@ export function LedgerView({
           items.push({ tx, flow: flowFor(tx), readonly: true });
         }
       }
+      for (const tx of privateInboundAsTx) {
+        // 타인 개인→내 개인 수신 (읽기 전용)
+        if (tx.occurred_on < monthStart || tx.occurred_on >= nextMonthStart) continue;
+        if (!touches(tx)) continue;
+        items.push({ tx, flow: flowFor(tx), readonly: true });
+      }
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions, inboundAsTx, tab, assetFilter, myPrivateAssetIds, monthStart, nextMonthStart]);
+  }, [transactions, inboundAsTx, privateInboundAsTx, tab, assetFilter, myPrivateAssetIds, monthStart, nextMonthStart]);
 
   // 잔액 기초: 현재 범위 자산들의 실제 잔액에 정합하도록
   // (비거래 기초 = 자산 잔액 합 − 전체 기간 흐름 합) + 월초 이전 흐름
@@ -244,6 +282,16 @@ export function LedgerView({
         )
           apply(row);
       }
+      for (const t of privateInboundTransfers) {
+        apply({
+          type: "transfer",
+          amount: t.amount,
+          occurred_on: t.occurred_on,
+          asset_id: t.from_asset_id,
+          to_asset_id: t.to_asset_id,
+          is_private: true,
+        });
+      }
     }
 
     // 범위 자산 잔액 합 (초기 금액·수동 보정 포함)
@@ -260,7 +308,7 @@ export function LedgerView({
     const nonTxBase = balanceSum - flowsAll; // 초기 금액 + 수동 보정분
     return nonTxBase + flowsBeforeMonth;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowTransactions, inboundTransfers, assets, tab, assetFilter, myPrivateAssetIds, monthStart]);
+  }, [flowTransactions, inboundTransfers, privateInboundTransfers, assets, tab, assetFilter, myPrivateAssetIds, monthStart]);
 
   const { income, expense, byDate, cumulativeEnd } = useMemo(() => {
     let income = 0;
@@ -731,6 +779,22 @@ export function LedgerView({
                     value: a.id,
                     label: `🏡 ${a.institution ? `${a.institution} · ` : ""}${a.name}`,
                   })),
+                // 다른 구성원 개인 자산 (개인 -> 개인 직접 이체용)
+                ...transferTargets
+                  .filter(
+                    (t) => t.is_private && t.owner_user_id !== currentUserId,
+                  )
+                  .map((t) => {
+                    const owner = t.owner_user_id
+                      ? memberById.get(t.owner_user_id)
+                      : null;
+                    return {
+                      value: t.id,
+                      label: `🔒 ${owner ? `${owner.display_name} · ` : ""}${
+                        t.institution ? `${t.institution} · ` : ""
+                      }${t.name}`,
+                    };
+                  }),
               ]
             : transferTargets.map((t) => {
                 if (!t.is_private) {
